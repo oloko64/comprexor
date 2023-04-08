@@ -1,6 +1,5 @@
 use flate2::write::GzEncoder;
 use humansize::{make_format, DECIMAL};
-use owo_colors::OwoColorize;
 use std::{
     collections::hash_map::DefaultHasher,
     fmt,
@@ -9,6 +8,100 @@ use std::{
     path::PathBuf,
 };
 use tar::Archive;
+
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct ArchiveData {
+    input_size: u64,
+    output_size: u64,
+    ratio: f64,
+}
+
+impl ArchiveData {
+    /// Get the input size without formatting
+    #[must_use]
+    pub fn input_size(&self) -> u64 {
+        self.input_size
+    }
+
+    /// Get the input size in a human readable format
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use comprexor::ArchiveData;
+    ///
+    /// let archive_data = ArchiveData {
+    ///    input_size: 1000,
+    ///    output_size: 1000,
+    ///    ratio: 1.0,
+    /// };
+    ///
+    /// assert_eq!(archive_data.input_size_formatted(), "1.0 kB");
+    /// ```
+    #[must_use]
+    pub fn input_size_formatted(&self) -> String {
+        let formatter = make_format(DECIMAL);
+        formatter(self.input_size)
+    }
+
+    /// Get the output size without formatting
+    #[must_use]
+    pub fn output_size(&self) -> u64 {
+        self.output_size
+    }
+
+    /// Get the output size in a human readable format
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use comprexor::ArchiveData;
+    ///
+    /// let archive_data = ArchiveData {
+    ///   input_size: 1000,
+    ///   output_size: 1000,
+    ///   ratio: 1.0,
+    /// };
+    ///
+    /// assert_eq!(archive_data.output_size_formatted(), "1.0 kB");
+    /// ```
+    #[must_use]
+    pub fn output_size_formatted(&self) -> String {
+        let formatter = make_format(DECIMAL);
+        formatter(self.output_size)
+    }
+
+    /// Get the ratio without formatting
+    #[must_use]
+    pub fn ratio(&self) -> f64 {
+        self.ratio
+    }
+
+    /// Get the ratio formatted to the given number of decimals
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use comprexor::ArchiveData;
+    ///
+    /// let archive_data = ArchiveData {
+    ///     input_size: 1000,
+    ///     output_size: 1000,
+    ///     ratio: 1.0,
+    /// };
+    ///
+    /// assert_eq!(archive_data.ratio_formatted(5), "1.00000");
+    /// assert_eq!(archive_data.ratio_formatted(2), "1.00");
+    /// ```
+    #[must_use]
+    pub fn ratio_formatted(&self, num_decimals: u8) -> String {
+        format!(
+            "{:.decimals$}",
+            self.ratio,
+            decimals = num_decimals as usize
+        )
+    }
+}
 
 trait ArchiveExt {
     fn get_hashed_file_in_temp(input: &str) -> PathBuf {
@@ -28,11 +121,13 @@ trait ArchiveExt {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
 pub struct Compressor<'a> {
     input: &'a str,
     output: &'a str,
 }
 
+#[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
 pub struct Extractor<'a> {
     input: &'a str,
     output: &'a str,
@@ -47,7 +142,7 @@ impl<'a> Extractor<'a> {
     ///
     /// # Example
     /// ```
-    /// use compress_rs::Extractor;
+    /// use comprexor::Extractor;
     ///
     /// let extractor = Extractor::new("./compacted-archive.tar.gz", "./output-folder-or-file");
     /// extractor.extract().unwrap();
@@ -61,7 +156,7 @@ impl<'a> Extractor<'a> {
     /// # Example
     ///
     /// ```
-    /// use compress_rs::Extractor;
+    /// use comprexor::Extractor;
     ///
     /// let extractor = Extractor::new("./compacted-archive.tar.gz", "./output-folder-or-file");
     /// extractor.extract().unwrap();
@@ -70,21 +165,13 @@ impl<'a> Extractor<'a> {
     /// # Errors
     ///
     /// This function will return an error if the input file is not a valid gzip file or something goes wrong while decompressing
-    pub fn extract(&self) -> Result<(), Box<dyn std::error::Error>> {
-        println!(
-            "Decompressing {} to {}\n",
-            self.input.green(),
-            self.output.green()
-        );
-
-        self.extract_internal()?;
-
-        Ok(())
+    pub fn extract(&self) -> Result<ArchiveData, std::io::Error> {
+        let archive_data = self.extract_internal()?;
+        Ok(archive_data)
     }
 
-    fn extract_internal(&self) -> Result<(), Box<dyn std::error::Error>> {
+    fn extract_internal(&self) -> Result<ArchiveData, std::io::Error> {
         let tar_temp = Self::get_hashed_file_in_temp(self.input);
-
         let input_file = BufReader::new(std::fs::File::open(self.input)?);
         let input_size = std::fs::metadata(self.input)?.len();
         let mut output_file = std::fs::File::create(&tar_temp)?;
@@ -99,15 +186,11 @@ impl<'a> Extractor<'a> {
 
         std::fs::remove_file(tar_temp)?;
 
-        let formatter = make_format(DECIMAL);
-        println!("Input size: {}", formatter(input_size).green());
-        println!("Output size: {}", formatter(output_size).green());
-        println!(
-            "Compression ratio: {:.3}",
-            (output_size as f64 / input_size as f64).green()
-        );
-
-        Ok(())
+        Ok(ArchiveData {
+            input_size,
+            output_size,
+            ratio: output_size as f64 / input_size as f64,
+        })
     }
 }
 
@@ -118,12 +201,12 @@ impl<'a> Compressor<'a> {
     /// # Example
     ///
     /// ```
-    /// use compress_rs::Compressor;
+    /// use comprexor::Compressor;
     ///
     /// let compressor = Compressor::new("./folder-or-file-to-compress", "./compacted-archive.tar.gz");
     /// compressor.compress().unwrap();
     /// ```
-    pub fn new(input: &'a str, output: &'a str) -> Self {
+    pub fn new(input: &'a str, output: &'a str) -> Compressor<'a> {
         Self { input, output }
     }
 
@@ -132,7 +215,7 @@ impl<'a> Compressor<'a> {
     /// # Example
     ///
     /// ```
-    /// use compress_rs::Compressor;
+    /// use comprexor::Compressor;
     ///
     /// let compressor = Compressor::new("./folder-or-file-to-compress", "./compacted-archive.tar.gz");
     /// compressor.compress().unwrap();
@@ -141,22 +224,16 @@ impl<'a> Compressor<'a> {
     /// # Errors
     ///
     /// This function will return an error if the input file is not a valid gzip file or something goes wrong while compressing
-    pub fn compress(&self) -> Result<(), Box<dyn std::error::Error>> {
-        println!(
-            "Compressing {} to {}\n",
-            self.input.green(),
-            self.output.green()
-        );
-        self.compress_with_tar()?;
+    pub fn compress(&self) -> Result<ArchiveData, std::io::Error> {
+        let archive_data = self.compress_with_tar()?;
 
-        Ok(())
+        Ok(archive_data)
     }
 
-    fn compress_with_tar(&self) -> Result<(), Box<dyn std::error::Error>> {
+    fn compress_with_tar(&self) -> Result<ArchiveData, std::io::Error> {
         let tar_temp = Self::get_hashed_file_in_temp(self.input);
 
         let files_to_append = if std::fs::metadata(self.input)?.is_dir() {
-            println!("Getting files from directory...");
             walkdir::WalkDir::new(self.input)
                 .into_iter()
                 .filter_map(Result::ok)
@@ -176,15 +253,18 @@ impl<'a> Compressor<'a> {
 
         tar.finish()?;
 
-        println!("{}", "Tar file created, compressing...\n".green());
-        self.compress_internal(tar_temp.to_str().ok_or("Invalid path")?)?;
+        let archive_data =
+            self.compress_internal(tar_temp.to_str().ok_or(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Could not convert tar temp file to str",
+            ))?)?;
 
         std::fs::remove_file(tar_temp)?;
 
-        Ok(())
+        Ok(archive_data)
     }
 
-    fn compress_internal<T>(&self, input: T) -> Result<(), Box<dyn std::error::Error>>
+    fn compress_internal<T>(&self, input: T) -> Result<ArchiveData, std::io::Error>
     where
         T: AsRef<str>,
     {
@@ -197,14 +277,10 @@ impl<'a> Compressor<'a> {
         encoder.finish()?;
         let output_size = std::fs::metadata(self.output)?.len();
 
-        let formatter = make_format(DECIMAL);
-        println!("Input size: {}", formatter(input_size).green());
-        println!("Output size: {}", formatter(output_size).green());
-        println!(
-            "Compression ratio: {:.3}",
-            (input_size as f64 / output_size as f64).green()
-        );
-
-        Ok(())
+        Ok(ArchiveData {
+            input_size,
+            output_size,
+            ratio: input_size as f64 / output_size as f64,
+        })
     }
 }
