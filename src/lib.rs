@@ -10,13 +10,13 @@ use std::{
 use tar::Archive;
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
-pub struct ArchiveData {
+pub struct ArchiveInfo {
     input_size: u64,
     output_size: u64,
     ratio: f64,
 }
 
-impl ArchiveData {
+impl ArchiveInfo {
     /// Get the input size without formatting
     #[must_use]
     pub fn input_size(&self) -> u64 {
@@ -28,9 +28,9 @@ impl ArchiveData {
     /// # Example
     ///
     /// ```
-    /// use comprexor::ArchiveData;
+    /// use comprexor::ArchiveInfo;
     ///
-    /// let archive_data = ArchiveData {
+    /// let archive_data = ArchiveInfo {
     ///    input_size: 1000,
     ///    output_size: 1000,
     ///    ratio: 1.0,
@@ -55,9 +55,9 @@ impl ArchiveData {
     /// # Example
     ///
     /// ```
-    /// use comprexor::ArchiveData;
+    /// use comprexor::ArchiveInfo;
     ///
-    /// let archive_data = ArchiveData {
+    /// let archive_data = ArchiveInfo {
     ///   input_size: 1000,
     ///   output_size: 1000,
     ///   ratio: 1.0,
@@ -82,9 +82,9 @@ impl ArchiveData {
     /// # Example
     ///
     /// ```
-    /// use comprexor::ArchiveData;
+    /// use comprexor::ArchiveInfo;
     ///
-    /// let archive_data = ArchiveData {
+    /// let archive_data = ArchiveInfo {
     ///     input_size: 1000,
     ///     output_size: 1000,
     ///     ratio: 1.0,
@@ -165,12 +165,12 @@ impl<'a> Extractor<'a> {
     /// # Errors
     ///
     /// This function will return an error if the input file is not a valid gzip file or something goes wrong while decompressing
-    pub fn extract(&self) -> Result<ArchiveData, std::io::Error> {
+    pub fn extract(&self) -> Result<ArchiveInfo, std::io::Error> {
         let archive_data = self.extract_internal()?;
         Ok(archive_data)
     }
 
-    fn extract_internal(&self) -> Result<ArchiveData, std::io::Error> {
+    fn extract_internal(&self) -> Result<ArchiveInfo, std::io::Error> {
         let tar_temp = Self::get_hashed_file_in_temp(self.input);
         let input_file = BufReader::new(std::fs::File::open(self.input)?);
         let input_size = std::fs::metadata(self.input)?.len();
@@ -186,7 +186,7 @@ impl<'a> Extractor<'a> {
 
         std::fs::remove_file(tar_temp)?;
 
-        Ok(ArchiveData {
+        Ok(ArchiveInfo {
             input_size,
             output_size,
             ratio: output_size as f64 / input_size as f64,
@@ -224,13 +224,13 @@ impl<'a> Compressor<'a> {
     /// # Errors
     ///
     /// This function will return an error if the input file is not a valid gzip file or something goes wrong while compressing
-    pub fn compress(&self) -> Result<ArchiveData, std::io::Error> {
+    pub fn compress(&self) -> Result<ArchiveInfo, std::io::Error> {
         let archive_data = self.compress_with_tar()?;
 
         Ok(archive_data)
     }
 
-    fn compress_with_tar(&self) -> Result<ArchiveData, std::io::Error> {
+    fn compress_with_tar(&self) -> Result<ArchiveInfo, std::io::Error> {
         let tar_temp = Self::get_hashed_file_in_temp(self.input);
 
         let files_to_append = if std::fs::metadata(self.input)?.is_dir() {
@@ -264,7 +264,7 @@ impl<'a> Compressor<'a> {
         Ok(archive_data)
     }
 
-    fn compress_internal<T>(&self, input: T) -> Result<ArchiveData, std::io::Error>
+    fn compress_internal<T>(&self, input: T) -> Result<ArchiveInfo, std::io::Error>
     where
         T: AsRef<str>,
     {
@@ -277,7 +277,7 @@ impl<'a> Compressor<'a> {
         encoder.finish()?;
         let output_size = std::fs::metadata(self.output)?.len();
 
-        Ok(ArchiveData {
+        Ok(ArchiveInfo {
             input_size,
             output_size,
             ratio: input_size as f64 / output_size as f64,
