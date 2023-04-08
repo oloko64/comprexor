@@ -25,9 +25,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 This will create a file called `output.tar.gz` in the current directory.
 
-### Decompressing
+### Extracting
 
-You can use the same function to decompress a file or a folder. The output will be a folder or a file depending on the input.
+You can use the same function to extract a file or a folder. The output will be a folder or a file depending on the input.
 
 In the following example we are decompressing a file called `some-folder-or-file.tar.gz`, which was created in the previous example, and saving the output to `output`.
 
