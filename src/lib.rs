@@ -232,23 +232,32 @@ impl<'a> Compressor<'a> {
 
     fn compress_with_tar(&self) -> Result<ArchiveInfo, std::io::Error> {
         let tar_temp = Self::get_hashed_file_in_temp(self.input);
-
-        let files_to_append = if std::fs::metadata(self.input)?.is_dir() {
-            walkdir::WalkDir::new(self.input)
-                .into_iter()
-                .filter_map(Result::ok)
-                .filter(|e| e.file_type().is_file())
-                .map(|e| e.path().to_str().unwrap().to_string())
-                .collect::<Vec<String>>()
-        } else {
-            vec![self.input.to_string()]
-        };
-
         let file_tar = std::fs::File::create(&tar_temp)?;
         let mut tar = tar::Builder::new(file_tar);
 
-        for file in files_to_append {
-            tar.append_path(file)?;
+        if std::fs::metadata(self.input)?.is_dir() {
+            let folder_name = std::path::Path::new(self.input)
+                .file_name()
+                .ok_or(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Could not get file name from input",
+                ))?
+                .to_str()
+                .ok_or(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Could not convert file name to str",
+                ))?;
+            tar.append_dir_all(folder_name, self.input)?;
+        } else if std::fs::metadata(self.input)?.is_file()
+            || std::fs::metadata(self.input)?.is_symlink()
+        {
+            let mut file = std::fs::File::open(self.input)?;
+            tar.append_file(self.input, &mut file)?;
+        } else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Input is neither a file, symlink or a directory",
+            ));
         }
 
         tar.finish()?;
