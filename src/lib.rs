@@ -24,6 +24,12 @@ pub enum CompressionLevel {
     Custom(u32),
 }
 
+impl AsRef<CompressionLevel> for CompressionLevel {
+    fn as_ref(&self) -> &CompressionLevel {
+        self
+    }
+}
+
 impl From<&CompressionLevel> for u32 {
     fn from(value: &CompressionLevel) -> Self {
         use CompressionLevel::{Custom, Default, Fast, Maximum, None};
@@ -73,18 +79,28 @@ impl TryFrom<CompressionLevel> for Compression {
     }
 }
 
-// impl Into<Compression> for CompressionLevel {
-//     fn into(self) -> Compression {
-//         use CompressionLevel::{Custom, Default, Fast, Maximum, None};
-//         match self {
-//             None => Compression::none(),
-//             Fast => Compression::fast(),
-//             Default => Compression::default(),
-//             Maximum => Compression::best(),
-//             Custom(level) => Compression::new(level),
-//         }
-//     }
-// }
+impl TryFrom<&CompressionLevel> for Compression {
+    type Error = String;
+
+    fn try_from(value: &CompressionLevel) -> Result<Self, Self::Error> {
+        use CompressionLevel::{Custom, Default, Fast, Maximum, None};
+        match value {
+            None => Ok(Compression::none()),
+            Fast => Ok(Compression::fast()),
+            Default => Ok(Compression::default()),
+            Maximum => Ok(Compression::best()),
+            Custom(level) => {
+                if *level > 9 {
+                    Err(format!(
+                        "Invalid compression level: {level}, must be between 0 and 9"
+                    ))
+                } else {
+                    Ok(Compression::new(*level))
+                }
+            }
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct ArchiveInfo {
@@ -311,13 +327,16 @@ impl<'a> Compressor<'a> {
     /// # Errors
     ///
     /// This function will return an error if the input file is not a valid gzip file or something goes wrong while compressing
-    pub fn compress(&self, level: CompressionLevel) -> Result<ArchiveInfo, std::io::Error> {
-        let archive_data = self.compress_with_tar(level)?;
+    pub fn compress<T>(&self, level: T) -> Result<ArchiveInfo, std::io::Error>
+    where
+        T: AsRef<CompressionLevel>,
+    {
+        let archive_data = self.compress_with_tar(level.as_ref())?;
 
         Ok(archive_data)
     }
 
-    fn compress_with_tar(&self, level: CompressionLevel) -> Result<ArchiveInfo, std::io::Error> {
+    fn compress_with_tar(&self, level: &CompressionLevel) -> Result<ArchiveInfo, std::io::Error> {
         let tar_temp = Self::get_hashed_file_in_temp(self.input);
         let file_tar = std::fs::File::create(&tar_temp)?;
         let mut tar = tar::Builder::new(file_tar);
@@ -365,7 +384,7 @@ impl<'a> Compressor<'a> {
     fn compress_internal<T>(
         &self,
         input: T,
-        level: CompressionLevel,
+        level: &CompressionLevel,
     ) -> Result<ArchiveInfo, std::io::Error>
     where
         T: AsRef<str>,
