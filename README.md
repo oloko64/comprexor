@@ -11,11 +11,11 @@ You can use the same function to compress a file or a folder. The output will be
 In the following example we are compressing a folder called `some-folder-or-file` and saving the output to `output.tar.gz`.
 
 ```rs
-use comprexor::Compressor;
+use comprexor::{CompressionLevel, Compressor};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let compressor = Compressor::new("./some-folder-or-file", "./output.tar.gz");
-    let compress_info = compressor.compress()?;
+    let compress_info = compressor.compress(CompressionLevel::Maximum)?;
 
     dbg!(&compress_info.input_size_formatted());
     dbg!(&compress_info.output_size_formatted());

@@ -1,4 +1,4 @@
-use flate2::write::GzEncoder;
+use flate2::{write::GzEncoder, Compression};
 use humansize::{make_format, DECIMAL};
 use std::{
     collections::hash_map::DefaultHasher,
@@ -8,6 +8,34 @@ use std::{
     path::PathBuf,
 };
 use tar::Archive;
+
+/// The compression level to use when compressing files (0-9)
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub enum CompressionLevel {
+    /// No compression (0)
+    None,
+    /// Fast compression (1)
+    Fast,
+    /// Default compression (6)
+    Default,
+    /// Maximum compression (9)
+    Maximum,
+    /// Custom compression level (0-9)
+    Custom(u32),
+}
+
+impl Into<Compression> for CompressionLevel {
+    fn into(self) -> Compression {
+        use CompressionLevel::{Custom, Default, Fast, Maximum, None};
+        match self {
+            None => Compression::none(),
+            Fast => Compression::fast(),
+            Default => Compression::default(),
+            Maximum => Compression::best(),
+            Custom(level) => Compression::new(level),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct ArchiveInfo {
@@ -201,10 +229,10 @@ impl<'a> Compressor<'a> {
     /// # Example
     ///
     /// ```
-    /// use comprexor::Compressor;
+    /// use comprexor::{CompressionLevel, Compressor};
     ///
     /// let compressor = Compressor::new("./folder-or-file-to-compress", "./compacted-archive.tar.gz");
-    /// compressor.compress().unwrap();
+    /// compressor.compress(CompressionLevel::Maximum).unwrap();
     /// ```
     pub fn new(input: &'a str, output: &'a str) -> Compressor<'a> {
         Self { input, output }
@@ -212,25 +240,35 @@ impl<'a> Compressor<'a> {
 
     /// Compress the input file or folder to the output location
     ///
+    /// You can choose the compression level with the `CompressionLevel` enum
+    ///
+    /// The compression level can be:
+    ///
+    /// - `CompressionLevel::None`
+    /// - `CompressionLevel::Fast`
+    /// - `CompressionLevel::Default`
+    /// - `CompressionLevel::Maximum`
+    /// - `CompressionLevel::Custom` (you can specify the compression level between 0 and 9)
+    ///
     /// # Example
     ///
     /// ```
-    /// use comprexor::Compressor;
+    /// use comprexor::{CompressionLevel, Compressor};
     ///
     /// let compressor = Compressor::new("./folder-or-file-to-compress", "./compacted-archive.tar.gz");
-    /// compressor.compress().unwrap();
+    /// compressor.compress(CompressionLevel::Maximum).unwrap();
     /// ```
     ///
     /// # Errors
     ///
     /// This function will return an error if the input file is not a valid gzip file or something goes wrong while compressing
-    pub fn compress(&self) -> Result<ArchiveInfo, std::io::Error> {
-        let archive_data = self.compress_with_tar()?;
+    pub fn compress(&self, level: CompressionLevel) -> Result<ArchiveInfo, std::io::Error> {
+        let archive_data = self.compress_with_tar(level)?;
 
         Ok(archive_data)
     }
 
-    fn compress_with_tar(&self) -> Result<ArchiveInfo, std::io::Error> {
+    fn compress_with_tar(&self, level: CompressionLevel) -> Result<ArchiveInfo, std::io::Error> {
         let tar_temp = Self::get_hashed_file_in_temp(self.input);
         let file_tar = std::fs::File::create(&tar_temp)?;
         let mut tar = tar::Builder::new(file_tar);
@@ -262,18 +300,24 @@ impl<'a> Compressor<'a> {
 
         tar.finish()?;
 
-        let archive_data =
-            self.compress_internal(tar_temp.to_str().ok_or(std::io::Error::new(
+        let archive_data = self.compress_internal(
+            tar_temp.to_str().ok_or(std::io::Error::new(
                 std::io::ErrorKind::Other,
                 "Could not convert tar temp file to str",
-            ))?)?;
+            ))?,
+            level,
+        )?;
 
         std::fs::remove_file(tar_temp)?;
 
         Ok(archive_data)
     }
 
-    fn compress_internal<T>(&self, input: T) -> Result<ArchiveInfo, std::io::Error>
+    fn compress_internal<T>(
+        &self,
+        input: T,
+        level: CompressionLevel,
+    ) -> Result<ArchiveInfo, std::io::Error>
     where
         T: AsRef<str>,
     {
@@ -281,7 +325,7 @@ impl<'a> Compressor<'a> {
         let input_size = std::fs::metadata(input.as_ref())?.len();
         let output_file = std::fs::File::create(self.output)?;
 
-        let mut encoder = GzEncoder::new(output_file, flate2::Compression::best());
+        let mut encoder = GzEncoder::new(output_file, level.into());
         copy(&mut input_file, &mut encoder)?;
         encoder.finish()?;
         let output_size = std::fs::metadata(self.output)?.len();
