@@ -24,6 +24,19 @@ pub enum CompressionLevel {
     Custom(u32),
 }
 
+impl From<&CompressionLevel> for u32 {
+    fn from(value: &CompressionLevel) -> Self {
+        use CompressionLevel::{Custom, Default, Fast, Maximum, None};
+        match value {
+            None => 0,
+            Fast => 1,
+            Default => 6,
+            Maximum => 9,
+            Custom(level) => *level,
+        }
+    }
+}
+
 impl From<CompressionLevel> for u32 {
     fn from(value: CompressionLevel) -> Self {
         use CompressionLevel::{Custom, Default, Fast, Maximum, None};
