@@ -24,10 +24,10 @@ pub enum CompressionLevel {
     Custom(u32),
 }
 
-impl Into<u32> for CompressionLevel {
-    fn into(self) -> u32 {
+impl From<CompressionLevel> for u32 {
+    fn from(value: CompressionLevel) -> Self {
         use CompressionLevel::{Custom, Default, Fast, Maximum, None};
-        match self {
+        match value {
             None => 0,
             Fast => 1,
             Default => 6,
@@ -37,18 +37,41 @@ impl Into<u32> for CompressionLevel {
     }
 }
 
-impl Into<Compression> for CompressionLevel {
-    fn into(self) -> Compression {
+impl TryFrom<CompressionLevel> for Compression {
+    type Error = String;
+
+    fn try_from(value: CompressionLevel) -> Result<Self, Self::Error> {
         use CompressionLevel::{Custom, Default, Fast, Maximum, None};
-        match self {
-            None => Compression::none(),
-            Fast => Compression::fast(),
-            Default => Compression::default(),
-            Maximum => Compression::best(),
-            Custom(level) => Compression::new(level),
+        match value {
+            None => Ok(Compression::none()),
+            Fast => Ok(Compression::fast()),
+            Default => Ok(Compression::default()),
+            Maximum => Ok(Compression::best()),
+            Custom(level) => {
+                if level > 9 {
+                    Err(format!(
+                        "Invalid compression level: {level}, must be between 0 and 9"
+                    ))
+                } else {
+                    Ok(Compression::new(level))
+                }
+            }
         }
     }
 }
+
+// impl Into<Compression> for CompressionLevel {
+//     fn into(self) -> Compression {
+//         use CompressionLevel::{Custom, Default, Fast, Maximum, None};
+//         match self {
+//             None => Compression::none(),
+//             Fast => Compression::fast(),
+//             Default => Compression::default(),
+//             Maximum => Compression::best(),
+//             Custom(level) => Compression::new(level),
+//         }
+//     }
+// }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct ArchiveInfo {
@@ -338,7 +361,12 @@ impl<'a> Compressor<'a> {
         let input_size = std::fs::metadata(input.as_ref())?.len();
         let output_file = std::fs::File::create(self.output)?;
 
-        let mut encoder = GzEncoder::new(output_file, level.into());
+        let mut encoder = GzEncoder::new(
+            output_file,
+            level
+                .try_into()
+                .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))?,
+        );
         copy(&mut input_file, &mut encoder)?;
         encoder.finish()?;
         let output_size = std::fs::metadata(self.output)?.len();
