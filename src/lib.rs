@@ -24,6 +24,19 @@ pub enum CompressionLevel {
     Custom(u32),
 }
 
+impl Into<u32> for CompressionLevel {
+    fn into(self) -> u32 {
+        use CompressionLevel::{Custom, Default, Fast, Maximum, None};
+        match self {
+            None => 0,
+            Fast => 1,
+            Default => 6,
+            Maximum => 9,
+            Custom(level) => level,
+        }
+    }
+}
+
 impl Into<Compression> for CompressionLevel {
     fn into(self) -> Compression {
         use CompressionLevel::{Custom, Default, Fast, Maximum, None};
