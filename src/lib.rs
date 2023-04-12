@@ -3,11 +3,12 @@ use humansize::{make_format, DECIMAL};
 use std::{
     collections::hash_map::DefaultHasher,
     fmt,
+    fs::File,
     hash::Hasher,
-    io::{copy, BufReader},
-    path::PathBuf,
+    io::{copy, BufReader, Seek, SeekFrom},
 };
 use tar::Archive;
+use tempfile::NamedTempFile;
 
 /// The compression level to use when compressing files (0-9)
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
@@ -197,13 +198,6 @@ impl ArchiveInfo {
 }
 
 trait ArchiveExt {
-    fn get_hashed_file_in_temp(input: &str) -> PathBuf {
-        let random_f64 = rand::random::<f64>();
-        let temp_dir = std::env::temp_dir();
-        let hashed_name = Self::gen_hashed_name(&format!("{input}{random_f64}"));
-        temp_dir.join(hashed_name)
-    }
-
     fn gen_hashed_name<T>(input: &T) -> String
     where
         T: std::hash::Hash + fmt::Display,
@@ -264,20 +258,17 @@ impl<'a> Extractor<'a> {
     }
 
     fn extract_internal(&self) -> Result<ArchiveInfo, std::io::Error> {
-        let tar_temp = Self::get_hashed_file_in_temp(self.input);
         let input_file = BufReader::new(std::fs::File::open(self.input)?);
         let input_size = std::fs::metadata(self.input)?.len();
-        let mut output_file = std::fs::File::create(&tar_temp)?;
+        let mut tmpfile = tempfile::tempfile()?;
 
         let mut decoder = flate2::read::GzDecoder::new(input_file);
-        copy(&mut decoder, &mut output_file)?;
-        let output_size = std::fs::metadata(&tar_temp)?.len();
+        copy(&mut decoder, &mut tmpfile)?;
+        tmpfile.seek(SeekFrom::Start(0))?;
+        let output_size = tmpfile.metadata()?.len();
 
-        let file = std::fs::File::open(&tar_temp)?;
-        let mut archive = Archive::new(file);
+        let mut archive = Archive::new(tmpfile);
         archive.unpack(self.output)?;
-
-        std::fs::remove_file(tar_temp)?;
 
         Ok(ArchiveInfo {
             input_size,
@@ -337,9 +328,8 @@ impl<'a> Compressor<'a> {
     }
 
     fn compress_with_tar(&self, level: &CompressionLevel) -> Result<ArchiveInfo, std::io::Error> {
-        let tar_temp = Self::get_hashed_file_in_temp(self.input);
-        let file_tar = std::fs::File::create(&tar_temp)?;
-        let mut tar = tar::Builder::new(file_tar);
+        let mut tmpfile = NamedTempFile::new()?;
+        let mut tar = tar::Builder::new(tmpfile.reopen()?);
 
         if std::fs::metadata(self.input)?.is_dir() {
             let folder_name = std::path::Path::new(self.input)
@@ -367,30 +357,25 @@ impl<'a> Compressor<'a> {
         }
 
         tar.finish()?;
+        tmpfile.seek(SeekFrom::Start(0))?;
 
-        let archive_data = self.compress_internal(
-            tar_temp.to_str().ok_or(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "Could not convert tar temp file to str",
-            ))?,
-            level,
-        )?;
+        let archive_data = self.compress_internal(&mut tmpfile.reopen()?, level)?;
 
-        std::fs::remove_file(tar_temp)?;
+        // By closing the `TempPath` explicitly, we can check that it has
+        // been deleted successfully. If we don't close it explicitly, the
+        // file will still be deleted when `file` goes out of scope, but we
+        // won't know whether deleting the file succeeded.
+        tmpfile.close()?;
 
         Ok(archive_data)
     }
 
-    fn compress_internal<T>(
+    fn compress_internal(
         &self,
-        input: T,
+        input_file: &mut File,
         level: &CompressionLevel,
-    ) -> Result<ArchiveInfo, std::io::Error>
-    where
-        T: AsRef<str>,
-    {
-        let mut input_file = BufReader::new(std::fs::File::open(input.as_ref())?);
-        let input_size = std::fs::metadata(input.as_ref())?.len();
+    ) -> Result<ArchiveInfo, std::io::Error> {
+        let input_size = input_file.metadata()?.len();
         let output_file = std::fs::File::create(self.output)?;
 
         let mut encoder = GzEncoder::new(
@@ -399,7 +384,7 @@ impl<'a> Compressor<'a> {
                 .try_into()
                 .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))?,
         );
-        copy(&mut input_file, &mut encoder)?;
+        copy(input_file, &mut encoder)?;
         encoder.finish()?;
         let output_size = std::fs::metadata(self.output)?.len();
 
