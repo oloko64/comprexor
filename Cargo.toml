@@ -1,6 +1,6 @@
 [package]
 name = "comprexor"
-version = "0.1.5"
+version = "0.1.520"
 edition = "2021"
 authors = ["OLoKo64 <reinaldorozatoj.11cg1@aleeas.com>"]
 description = "A simple lib to compress and extract files and directories."
@@ -13,7 +13,7 @@ readme = "README.md"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-flate2 = "1.0.25"
+flate2 = "1.0.26"
 humansize = "2.1.3"
-tar = "0.4.38"
-tempfile = "3.5.0"
+tar = "0.4.39"
+tempfile = "3.7.0"

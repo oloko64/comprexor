@@ -1,5 +1,6 @@
 /target
 /.vscode
+Cargo.lock
 
 # Ignore all files that are not part of the lib
 /src/main.rs
