@@ -10,7 +10,7 @@ You can use the same function to compress a file or a folder. The output will be
 
 In the following example we are compressing a folder called `some-folder-or-file` and saving the output to `output.tar.gz`.
 
-```rs
+```rust
 use comprexor::{CompressionLevel, Compressor};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -31,7 +31,7 @@ You can use the same function to extract a file or a folder. The output will be 
 
 In the following example we are decompressing a file called `some-folder-or-file.tar.gz`, which was created in the previous example, and saving the output to `output`.
 
-```rs
+```rust
 use comprexor::Extractor;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
